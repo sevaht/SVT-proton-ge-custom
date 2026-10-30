@@ -581,6 +581,9 @@ apply_all_in_dir() {
     echo "WINE: -HOTFIX- Add Bluetooth LE GATT and WinRT BLE support"
     apply_all_in_dir "../patches/wine-hotfixes/bluetooth-le/"
 
+    echo "WINE: -HOTFIX- win32u: set up the desktop early for the programs named in PROTON_EAGER_DESKTOP"
+    apply_patch "../patches/wine-hotfixes/pending/win32u-setup-desktop-early-for-named-programs.patch"
+
     echo "WINE: RUN AUTOCONF TOOLS/MAKE_REQUESTS"
     autoreconf -f
     ./tools/make_requests

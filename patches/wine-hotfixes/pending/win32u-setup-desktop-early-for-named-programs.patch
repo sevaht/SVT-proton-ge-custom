@@ -1,0 +1,102 @@
+From 385ada670c43bfae9df4433049e3f29cc0f8c581 Mon Sep 17 00:00:00 2001
+From: Jacob McIntosh <nacitar.sevaht@gmail.com>
+Date: Sat, 10 Oct 2026 17:19:02 -0600
+Subject: [PATCH] win32u: setup the desktop early for named programs
+
+The way ROTK integrates with H1Z1, the lazy-load behavior runs into a deadlock
+because their patching library suspends threads at a bad time.  This avoids
+that problem by getting the wine's part done before that happens.
+---
+ dlls/win32u/class.c | 69 +++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 69 insertions(+)
+
+diff --git a/dlls/win32u/class.c b/dlls/win32u/class.c
+index dc1a42b381d..4ff641682f0 100644
+--- a/dlls/win32u/class.c
++++ b/dlls/win32u/class.c
+@@ -257,6 +257,61 @@ static void init_user(void)
+     register_desktop_class();
+ }
+ 
++/* whether the server already has a desktop window, without creating or
++ * launching anything. */
++static BOOL eager_desktop_window_exists(void)
++{
++    ULONG top = 0;
++
++    SERVER_START_REQ( get_desktop_window )
++    {
++        req->force = 0;
++        if (!wine_server_call( req )) top = reply->top_window;
++    }
++    SERVER_END_REQ;
++    return top != 0;
++}
++
++static BOOL eager_is_list_separator( char c )
++{
++    return c == ':' || c == ';' || c == ',';
++}
++
++/* whether the file name `name` equals the `len` characters at `want`,
++ * ignoring case. */
++static BOOL eager_name_equals( const WCHAR *name, const char *want, size_t len )
++{
++    for (; len && *name; name++, want++, len--)
++    {
++        WCHAR a = *name, b = (unsigned char)*want;
++        if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
++        if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
++        if (a != b) return FALSE;
++    }
++    return !len && !*name;
++}
++
++/* whether this process is one of the programs whose file names are in
++ * PROTON_EAGER_DESKTOP: one name (H1Z1.exe) or several separated by ':'
++ * (H1Z1.exe:Other.exe; ';' and ',' work too, a Windows file name can't hold
++ * a colon). Names are compared whole and ignoring case. */
++static BOOL eager_desktop_wanted(void)
++{
++    const char *start, *end;
++    const char *list = getenv( "PROTON_EAGER_DESKTOP" );
++    const WCHAR *path = NtCurrentTeb()->Peb->ProcessParameters->ImagePathName.Buffer, *base, *p;
++
++    if (!list || !*list || !path) return FALSE;
++    for (base = p = path; *p; p++) if (*p == '\\' || *p == '/') base = p + 1;
++    for (start = list; *start; start = end)
++    {
++        while (eager_is_list_separator( *start )) start++;
++        for (end = start; *end && !eager_is_list_separator( *end ); end++) {}
++        if (end > start && eager_name_equals( base, start, end - start )) return TRUE;
++    }
++    return FALSE;
++}
++
+ /***********************************************************************
+  *	     NtUserInitializeClientPfnArrays   (win32u.@)
+  */
+@@ -276,6 +331,20 @@ NTSTATUS WINAPI NtUserInitializeClientPfnArrays( const ntuser_client_func_ptr *c
+     user32_module = user_module;
+ 
+     pthread_once( &init_once, init_user );
++
++    /* in the programs named by PROTON_EAGER_DESKTOP, set up the
++     * desktop window, load the display driver and register the builtin window
++     * classes now, while user32 is initializing, instead of lazily on the
++     * first window operation. Some games load a helper that suspends the main
++     * thread during start-up (ROTK's patch library, rotkc.dll, which its
++     * launcher loads into Z1 Battle Royale, does); if that lands inside the
++     * lazy one-time setup, the setup never finishes and the game hangs. Doing it here, before the game's own DLLs run, removes
++     * that window. It is limited to the named programs because it contends
++     * with other processes starting at the same time, and it only runs once a
++     * desktop exists (explorer is running): explorer and wineboot initialize
++     * user32 before there is one and must not try to start it. */
++    if (eager_desktop_wanted() && eager_desktop_window_exists()) get_desktop_window();
++
+     return STATUS_SUCCESS;
+ }
+ 
+-- 
+2.56.0
+
