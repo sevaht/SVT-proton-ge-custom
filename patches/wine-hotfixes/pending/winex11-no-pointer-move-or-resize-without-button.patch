@@ -1,0 +1,41 @@
+winex11: Don't start a pointer move or resize with no button down.
+
+move_resize_window() asks the window manager to start the move with
+_NET_WM_MOVERESIZE, giving the button that is down. When no button is down it
+still sent the request, with button 0 and a pointer direction, and returned.
+Per EWMH, button 0 is for a keyboard move (directions 9 and 10); a pointer
+direction with it is not well formed, and a window manager that honors it starts
+a move that nothing ends: it waits for a button release that already happened,
+so the window follows the pointer until the next click.
+
+An application gets there by running DefWindowProc for the caption click again
+after the first one ended its move: the ROTK Launcher (Electron/Chromium) does,
+and the second run reaches X11DRV_SysCommand with the button already up.
+
+Real Windows returns from SC_MOVE|HTCAPTION at once when no button is down
+(measured on Windows 10 build 19045 by calling SendMessage(WM_SYSCOMMAND,
+SC_MOVE|HTCAPTION) with the mouse idle: it returns in 0 ms and does not enter
+the move loop; the same call with a keyboard SC_MOVE blocks until Escape).
+Do the same here for the pointer directions. Keyboard moves are unchanged.
+
+---
+--- a/dlls/winex11.drv/mouse.c
++++ b/dlls/winex11.drv/mouse.c
+@@ -1523,6 +1523,17 @@
+
+     TRACE( "hwnd %p/%lx, pos %s, dir %d, button %d\n", hwnd, win, wine_dbgstr_point(&pos), dir, button );
+
++    /* Directions 0-8 are for a pointer, 9 (SIZE_KEYBOARD) and 10 (MOVE_KEYBOARD) for the keyboard.
++     * A pointer move or resize needs a button held: Windows returns from the system command at once
++     * when none is, which happens when an application runs DefWindowProc again after its drag has
++     * ended. A window manager asked for a pointer move with button 0 starts one that nothing ends,
++     * as it is waiting for a button release that already happened. */
++    if (!button && dir < 9)
++    {
++        TRACE( "no button is down, not starting a pointer move or resize\n" );
++        return;
++    }
++
+     xev.xclient.type = ClientMessage;
+     xev.xclient.window = win;
+     xev.xclient.message_type = x11drv_atom(_NET_WM_MOVERESIZE);
