@@ -3,7 +3,9 @@
 #
 #   svt/release.sh              release svt-GE-Proton11-11
 #   svt/release.sh --rev 2      a rebuild of the same GE release (-r2)
-#   svt/release.sh --draft      create it as a draft, to look over first
+#   svt/release.sh --draft      create it as a draft, to look over first;
+#                               publish it from its page on GitHub, not by
+#                               running this again
 #
 # The release holds what GE-Proton publishes for each of its own: the archive
 # (<tool name>.tar.gz, with one top-level folder named for the tool, so
@@ -65,9 +67,13 @@ checksums="${build_directory}/${tool_name}.sha512sum"
     die "the build is not of this commit; run svt/build.sh"
 (cd "${build_directory}" && sha512sum --check --quiet \
     "${tool_name}.sha512sum") || die "the archive does not match its checksum"
-if gh release view "${release_tag}" --repo "${github_repository}" \
-    > /dev/null 2>&1; then
-    die "release ${release_tag} exists (a rebuild needs --rev N)"
+# Listed, not viewed: a draft has no tag yet, so viewing it by tag fails
+# and a second release with the same tag would be made.
+existing_tags="$(gh release list --repo "${github_repository}" \
+    --limit 200 --json tagName --jq '.[].tagName')"
+if printf '%s\n' "${existing_tags}" | grep -F -x -q "${release_tag}"; then
+    die "release ${release_tag} exists, as a draft or published (a rebuild
+needs --rev N; a draft is published from its page on GitHub)"
 fi
 
 notes_file="$(mktemp)"
