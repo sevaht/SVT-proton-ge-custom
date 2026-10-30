@@ -1836,7 +1836,10 @@ $(DIST_COPY_TARGETS): | $(DST_DIR)
 all-dist: $(DIST_COPY_TARGETS)
 
 all-dist:
-	echo `date '+%s'` `GIT_DIR=$(abspath $(SRCDIR)/.git) git describe --tags` > $(DIST_VERSION)
+	# Report the nearest release tag (e.g. GE-Proton11-11), not
+	# "<tag>-<commits>-g<hash>": commits made on top of a release (in a
+	# fork, say) would otherwise change the version a build reports.
+	echo `date '+%s'` `GIT_DIR=$(abspath $(SRCDIR)/.git) git describe --tags --abbrev=0 --match 'GE-Proton*'` > $(DIST_VERSION)
 
 
 ##
