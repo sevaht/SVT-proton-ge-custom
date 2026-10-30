@@ -584,6 +584,9 @@ apply_all_in_dir() {
     echo "WINE: -HOTFIX- win32u: set up the desktop early for the programs named in PROTON_EAGER_DESKTOP"
     apply_patch "../patches/wine-hotfixes/pending/win32u-setup-desktop-early-for-named-programs.patch"
 
+    echo "WINE: -HOTFIX- winex11: don't start a pointer move or resize with no button down"
+    apply_patch "../patches/wine-hotfixes/pending/winex11-no-pointer-move-or-resize-without-button.patch"
+
     echo "WINE: RUN AUTOCONF TOOLS/MAKE_REQUESTS"
     autoreconf -f
     ./tools/make_requests
