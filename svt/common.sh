@@ -27,12 +27,12 @@ find_base_tag() {
 
 # The name Steam lists the tool under, and the folder it unpacks to. It
 # follows the series (GE-Proton11-3 and GE-Proton11-11 are both
-# SVT-Proton-GE11), so the tool a game is set to in Steam keeps working from
+# SVT-GE-Proton-11), so the tool a game is set to in Steam keeps working from
 # one release to the next.
 tool_name_for_tag() {
     local base_tag="${1}"
     local series="${base_tag#GE-Proton}"
-    echo "SVT-Proton-GE${series%%-*}"
+    echo "SVT-GE-Proton-${series%%-*}"
 }
 
 # Fails unless the checkout is exactly its last commit. The contents of a
