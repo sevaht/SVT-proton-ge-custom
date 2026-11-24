@@ -89,13 +89,22 @@ cd "${build_directory}"
 rm -rf -- "${build_directory:?}/${tool_name}" \
     "${build_directory:?}/${tool_name}.tar.gz" \
     "${build_directory:?}/${tool_name}.sha512sum"
-# xz is synced from its submodule on every build, which removes the autotools
-# files its previous build generated in src-xz. Its stamps still say it was
-# configured, so make runs aclocal without them and fails. Build it again
-# from scratch (it is small).
-find "${build_directory:?}" -maxdepth 1 \
-    \( -name 'src-xz' -o -name 'obj-xz-*' -o -name 'dst-xz-*' \
-    -o -name '.xz-*' \) -exec rm -rf -- {} +
+# The sources built with autotools are synced from their submodules on every
+# build, which removes the files their previous build generated in src-<name>
+# (autoreconf's build-aux/missing, for one). Their stamps still say they were
+# configured, so make runs automake without those files and fails. Build them
+# again from scratch (they are small); the names are whole, so vkd3d does not
+# take vkd3d-proton with it.
+for source_name in libpcap libxml2 openfst sbc vkd3d xrandr xz; do
+    rm -rf -- "${build_directory:?}/src-${source_name}" \
+        "${build_directory:?}/.${source_name}-source" \
+        "${build_directory:?}/.${source_name}-post-source"
+    for architecture in i386 x86_64 aarch64; do
+        rm -rf -- "${build_directory:?}/obj-${source_name}-${architecture}" \
+            "${build_directory:?}/dst-${source_name}-${architecture}" \
+            "${build_directory:?}/.${source_name}-${architecture}-"*
+    done
+done
 "${repository_root}/configure.sh" --build-name="${tool_name}" \
     --container-engine="${container_engine}"
 make -j"$(nproc)" redist
