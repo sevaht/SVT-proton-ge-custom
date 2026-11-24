@@ -1,0 +1,74 @@
+winewayland: Don't destroy a toplevel icon's wl_buffers before the icon.
+
+xdg-toplevel-icon-v1 makes it a protocol error ("no_buffer") to destroy a
+wl_buffer given to an xdg_toplevel_icon_v1 before the icon object itself.
+wayland_surface_set_icon_buffer() replaces an icon's buffer when a window sets
+a new icon (WM_SETICON, or the default one Wine assigns once a window is
+shown) and unreferenced the old wl_buffer at once, while the icon object made
+from it was still alive: wayland_surface_assign_icon(), which destroys the
+icon, runs only after it.
+
+A compositor that checks (Smithay's, so vaht and every compositor built on it)
+answers with the error, and that closes the connection, so the process's
+windows go away. Taking the icon off the toplevel and destroying it first, as
+assign_icon() does, avoids it; assign_icon() then makes the new icon.
+
+Send the protocol requests in that order in one place, and use it from both.
+
+---
+--- a/dlls/winewayland.drv/wayland_surface.c
++++ b/dlls/winewayland.drv/wayland_surface.c
+@@ -5568,6 +5568,24 @@
+ }
+ 
+ /**********************************************************************
++ *          wayland_surface_release_icon
++ *
++ * Takes the icon off the toplevel and destroys the xdg_toplevel_icon_v1. The
++ * icon's wl_buffers must not be destroyed before this: the protocol makes it
++ * an error ("no_buffer"), and a compositor that checks (Smithay's) closes the
++ * connection.
++ */
++static void wayland_surface_release_icon(struct wayland_surface *surface)
++{
++    if (!surface->xdg_toplevel_icon) return;
++
++    xdg_toplevel_icon_manager_v1_set_icon(process_wayland.xdg_toplevel_icon_manager_v1,
++                                          surface->xdg_toplevel, NULL);
++    xdg_toplevel_icon_v1_destroy(surface->xdg_toplevel_icon);
++    surface->xdg_toplevel_icon = NULL;
++}
++
++/**********************************************************************
+  *          wayland_surface_set_icon_buffer
+  */
+ void wayland_surface_set_icon_buffer(struct wayland_surface *surface, UINT type, const ICONINFO *ii)
+@@ -5587,11 +5605,13 @@
+ 
+     if (surface->big_icon_buffer && type == ICON_BIG)
+     {
++        wayland_surface_release_icon(surface);
+         wayland_shm_buffer_unref(surface->big_icon_buffer);
+         surface->big_icon_buffer = NULL;
+     }
+     else if (surface->small_icon_buffer && type != ICON_BIG)
+     {
++        wayland_surface_release_icon(surface);
+         wayland_shm_buffer_unref(surface->small_icon_buffer);
+         surface->small_icon_buffer = NULL;
+     }
+@@ -5614,13 +5634,7 @@
+ 
+     TRACE("surface=%p\n", surface);
+ 
+-    if (surface->xdg_toplevel_icon)
+-    {
+-        xdg_toplevel_icon_manager_v1_set_icon(process_wayland.xdg_toplevel_icon_manager_v1,
+-                                              surface->xdg_toplevel, NULL);
+-        xdg_toplevel_icon_v1_destroy(surface->xdg_toplevel_icon);
+-        surface->xdg_toplevel_icon = NULL;
+-    }
++    wayland_surface_release_icon(surface);
+ 
+     if (surface->big_icon_buffer)
+     {

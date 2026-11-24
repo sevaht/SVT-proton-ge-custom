@@ -797,6 +797,9 @@ apply_all_in_dir() {
     echo "WINE: -HOTFIX- winex11: don't start a pointer move or resize with no button down"
     apply_patch "../patches/wine-hotfixes/pending/winex11-no-pointer-move-or-resize-without-button.patch"
 
+    echo "WINE: -HOTFIX- winewayland: release a toplevel's icon before the buffers it was made from"
+    apply_patch "../patches/wine-hotfixes/pending/winewayland-release-toplevel-icon-before-its-buffers.patch"
+
     echo "WINE: RUN AUTOCONF TOOLS/MAKE_REQUESTS"
     autoreconf -f
     ./tools/make_requests
